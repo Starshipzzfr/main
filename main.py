@@ -424,7 +424,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
-        [InlineKeyboardButton("📝 Avis", callback_data="show_reviews")]
 ]
 
     with open('config/config.json', 'r') as f:
@@ -444,6 +443,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if config.get('networks_enabled', True):
         keyboard.append([InlineKeyboardButton("📱 Réseaux", callback_data="show_networks")])
+        
+    # Ajouter le bouton Avis juste après
+    keyboard.append([InlineKeyboardButton("📝 Avis", callback_data="show_reviews")])
 
     if str(update.effective_user.id) in ADMIN_IDS and access_manager.is_access_code_enabled():
         keyboard.extend([
