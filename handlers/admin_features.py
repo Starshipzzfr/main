@@ -1,4 +1,4 @@
-﻿import json
+import json
 import pytz  
 import asyncio
 import string
