@@ -284,7 +284,7 @@ WAITING_BROADCAST_EDIT = "WAITING_BROADCAST_EDIT"
 WAITING_CODE_NUMBER = "WAITING_CODE_NUMBER"
 WAITING_BAN_INPUT = "WAITING_BAN_INPUT"
 WAITING_UNBAN_INPUT = "WAITING_UNBAN_INPUT"
-
+WAITING_REVIEW_TEXT = "WAITING_REVIEW_TEXT"
 CATALOG = load_catalog()
 
 
@@ -424,7 +424,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
-    ]
+        [InlineKeyboardButton("📝 Avis", callback_data="show_reviews")]
+]
 
     with open('config/config.json', 'r') as f:
         config = json.load(f)
@@ -517,11 +518,16 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Affiche le menu d'administration principal simplifié"""
+    with open('config/config.json', 'r') as f:
+        config = json.load(f)
+    
+    reviews_status = "✅ Activé" if config.get('reviews_enabled', True) else "❌ Désactivé"
     
     keyboard = [
         [InlineKeyboardButton("📦 Gestion du catalogue", callback_data="menu_catalog")],
         [InlineKeyboardButton("🎨 Configuration du bot", callback_data="menu_config")],
         [InlineKeyboardButton("👥 Utilisateurs & Accès", callback_data="menu_users")],
+        [InlineKeyboardButton(f"📝 Avis: {reviews_status}", callback_data="toggle_reviews")],
         [
             InlineKeyboardButton("📊 Statistiques", callback_data="show_stats"),
             InlineKeyboardButton("📢 Annonces", callback_data="manage_broadcasts")
