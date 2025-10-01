@@ -284,65 +284,56 @@ WAITING_BROADCAST_EDIT = "WAITING_BROADCAST_EDIT"
 WAITING_CODE_NUMBER = "WAITING_CODE_NUMBER"
 WAITING_BAN_INPUT = "WAITING_BAN_INPUT"
 WAITING_UNBAN_INPUT = "WAITING_UNBAN_INPUT"
-WAITING_REVIEW_TEXT = 'WAITING_REVIEW_TEXT'
+
 CATALOG = load_catalog()
 
 
 async def handle_access_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la vérification du code d'accès"""
     user_id = update.effective_user.id
-    message_text = update.message.text.strip()
+    code = update.message.text.strip()
     chat_id = update.effective_chat.id
-    
-    # Rechercher un code d'accès valide dans le message
-    # Le code d'accès est composé de 8 caractères alphanumériques (lettres majuscules et chiffres)
-    import re
-    potential_codes = re.findall(r'[A-Z0-9]{8}', message_text)
     
     try:
         await update.message.delete()
     except Exception as e:
         pass
 
-    # Tester chaque code potentiel trouvé dans le message
-    for code in potential_codes:
-        if admin_features.mark_code_as_used(code, user_id, update.effective_user.username):
-            try:
-                current_message_id = update.message.message_id
-                
-                # Nettoyage des messages précédents
-                for i in range(current_message_id - 15, current_message_id + 1):
-                    try:
-                        await context.bot.delete_message(chat_id=chat_id, message_id=i)
-                    except Exception as e:
-                        pass  
-                        
-                if 'initial_welcome_message_id' in context.user_data:
-                    try:
-                        await context.bot.delete_message(
-                            chat_id=chat_id,
-                            message_id=context.user_data['initial_welcome_message_id']
-                        )
-                    except Exception as e:
-                        pass
+    if admin_features.mark_code_as_used(code, user_id, update.effective_user.username):
+        try:
+            current_message_id = update.message.message_id
+            
+            for i in range(current_message_id - 15, current_message_id + 1):
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=i)
+                except Exception as e:
+                    pass  
                     
-                context.user_data.clear()
+            if 'initial_welcome_message_id' in context.user_data:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=chat_id,
+                        message_id=context.user_data['initial_welcome_message_id']
+                    )
+                except Exception as e:
+                    pass
                 
-            except Exception as e:
-                pass
-                
-            return await start(update, context)
-
-    # Si aucun code valide n'a été trouvé dans le message
-    try:
-        await update.message.reply_text(
-            text="❌ Code invalide ou expiré",
-            reply_markup=None
-        )
-    except Exception as e:
-        pass
+            context.user_data.clear() 
+            
+        except Exception as e:
+            pass  
         
-    return WAITING_FOR_ACCESS_CODE
+        return await start(update, context)
+    else:
+        try:
+            await update.message.reply_text(
+                text="❌ Code invalide ou expiré",
+                reply_markup=None
+            )
+        except Exception as e:
+            pass
+            
+        return WAITING_FOR_ACCESS_CODE
 
 async def admin_generate_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Génère un nouveau code d'accès (commande admin)"""
@@ -432,9 +423,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     
     keyboard = [
-        [InlineKeyboardButton("📋 MENU", callback_data="show_categories")],
-        [InlineKeyboardButton("📝 Avis", callback_data="show_reviews")]
-
+        [InlineKeyboardButton("📋 MENU", callback_data="show_categories")]
     ]
 
     with open('config/config.json', 'r') as f:
@@ -3679,261 +3668,6 @@ async def handle_normal_buttons(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return CHOOSING
 
-async def show_reviews_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("📝 Poster un avis", callback_data="post_review")],
-        [InlineKeyboardButton("👀 Voir les avis", callback_data="view_reviews")],
-        [InlineKeyboardButton("🔙 Retour au menu", callback_data="back_to_home")]
-    ]
-    
-    if str(update.effective_user.id) in ADMIN_IDS:
-        keyboard.insert(1, [InlineKeyboardButton("👨‍💼 Gérer les avis en attente", callback_data="manage_pending_reviews")])
-
-    await query.edit_message_text(
-        "📊 *Menu des Avis*\n\n"
-        "Ici vous pouvez consulter les avis des utilisateurs ou poster le vôtre.\n"
-        "Chaque avis est vérifié par notre équipe avant d'être publié.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
-    return CHOOSING
-
-# Fonction pour démarrer le processus de création d'avis
-async def start_review_creation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    # Vérifier si l'utilisateur a déjà posté un avis
-    with open('config/reviews.json', 'r') as f:
-        reviews = json.load(f)
-    
-    user_id = str(update.effective_user.id)
-    has_pending = any(str(r['user_id']) == user_id for r in reviews['pending'])
-    has_approved = any(str(r['user_id']) == user_id for r in reviews['approved'])
-    
-    if has_pending or has_approved:
-        keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")]]
-        await query.edit_message_text(
-            "⚠️ Vous avez déjà posté un avis. Un seul avis par personne est autorisé.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return CHOOSING
-    
-    keyboard = [[InlineKeyboardButton("❌ Annuler", callback_data="show_reviews")]]
-    await query.edit_message_text(
-        "📝 *Postez votre avis*\n\n"
-        "Envoyez votre message. Votre avis sera examiné par notre équipe avant d'être publié.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
-    return WAITING_REVIEW_TEXT
-
-# Fonction pour gérer la réception d'un avis
-async def handle_review_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    review_text = update.message.text
-    
-    try:
-        await update.message.delete()
-    except:
-        pass
-        
-    # Sauvegarder l'avis
-    with open('config/reviews.json', 'r+') as f:
-        reviews = json.load(f)
-        reviews['pending'].append({
-            'id': reviews['total'] + 1,
-            'user_id': user.id,
-            'username': user.username or str(user.id),
-            'text': review_text,
-            'date': datetime.now(paris_tz).strftime('%d/%m/%Y'),
-            'status': 'pending'
-        })
-        reviews['total'] += 1
-        f.seek(0)
-        json.dump(reviews, f, indent=2)
-        f.truncate()
-    
-    keyboard = [[InlineKeyboardButton("🔙 Retour aux avis", callback_data="show_reviews")]]
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="✅ Votre avis a été enregistré et sera examiné par notre équipe. Merci !",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    # Notifier les admins
-    for admin_id in ADMIN_IDS:
-        try:
-            keyboard = [
-                [InlineKeyboardButton("👀 Voir les avis en attente", callback_data="manage_pending_reviews")]
-            ]
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text="📢 *Nouvel avis en attente de validation !*",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        except:
-            pass
-    
-    return CHOOSING
-
-# Fonction pour afficher les avis approuvés
-async def view_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    page = context.user_data.get('reviews_page', 0)
-    items_per_page = 5
-    
-    with open('config/reviews.json', 'r') as f:
-        reviews = json.load(f)
-    
-    approved_reviews = reviews['approved']
-    total_pages = (len(approved_reviews) + items_per_page - 1) // items_per_page
-    
-    if not approved_reviews:
-        keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")]]
-        await query.edit_message_text(
-            "😕 Aucun avis n'a encore été publié.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return CHOOSING
-    
-    start_idx = page * items_per_page
-    end_idx = start_idx + items_per_page
-    current_reviews = approved_reviews[start_idx:end_idx]
-    
-    text = f"📝 Avis {start_idx + 1} à {min(end_idx, len(approved_reviews))} sur {len(approved_reviews)} :\n\n"
-    
-    for review in current_reviews:
-        text += f"🚹 {review['username']}\n"
-        text += f"📅 {review['date']}\n"
-        text += f"💬 {review['text']}\n"
-        text += "----------------------------------------\n\n"
-    
-    keyboard = []
-    nav_buttons = []
-    
-    if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Précédent", callback_data="prev_reviews_page"))
-    if page < total_pages - 1:
-        nav_buttons.append(InlineKeyboardButton("➡️ Suivant", callback_data="next_reviews_page"))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    
-    keyboard.append([InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")])
-    
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return CHOOSING
-
-# Fonction pour gérer la pagination des avis
-async def handle_reviews_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == "prev_reviews_page":
-        context.user_data['reviews_page'] = max(0, context.user_data.get('reviews_page', 0) - 1)
-    else:  # next_reviews_page
-        context.user_data['reviews_page'] = context.user_data.get('reviews_page', 0) + 1
-    
-    return await view_reviews(update, context)
-
-# Fonction pour gérer les avis en attente (admin)
-async def manage_pending_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) not in ADMIN_IDS:
-        await update.callback_query.answer("❌ Accès non autorisé")
-        return CHOOSING
-    
-    query = update.callback_query
-    await query.answer()
-    
-    with open('config/reviews.json', 'r') as f:
-        reviews = json.load(f)
-    
-    if not reviews['pending']:
-        keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")]]
-        await query.edit_message_text(
-            "✅ Aucun avis en attente de validation.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return CHOOSING
-    
-    text = "🕐 *Avis en attente de validation:*\n\n"
-    
-    for review in reviews['pending']:
-        text += f"👤 Utilisateur: {review['username']}\n"
-        text += f"📅 Date: {review['date']}\n"
-        text += f"💬 Message: {review['text']}\n"
-        text += "----------------------------------------\n\n"
-    
-    keyboard = []
-    for review in reviews['pending']:
-        keyboard.append([
-            InlineKeyboardButton("✅ Approuver", callback_data=f"approve_review_{review['id']}"),
-            InlineKeyboardButton("❌ Refuser", callback_data=f"reject_review_{review['id']}")
-        ])
-    
-    keyboard.append([InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")])
-    
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
-    return CHOOSING
-
-# Fonction pour approuver ou rejeter un avis
-async def handle_review_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) not in ADMIN_IDS:
-        await update.callback_query.answer("❌ Accès non autorisé")
-        return CHOOSING
-    
-    query = update.callback_query
-    await query.answer()
-    
-    action, review_id = query.data.split('_')[0], int(query.data.split('_')[2])
-    
-    with open('config/reviews.json', 'r+') as f:
-        reviews = json.load(f)
-        
-        # Trouver l'avis concerné
-        review = None
-        for r in reviews['pending']:
-            if r['id'] == review_id:
-                review = r
-                reviews['pending'].remove(r)
-                break
-        
-        if review:
-            if action == "approve":
-                reviews['approved'].append(review)
-                notification_text = "✅ Votre avis a été approuvé et publié !"
-            else:  # reject
-                notification_text = "❌ Votre avis n'a pas été approuvé par notre équipe."
-            
-            # Notifier l'utilisateur
-            try:
-                await context.bot.send_message(
-                    chat_id=review['user_id'],
-                    text=notification_text
-                )
-            except:
-                pass
-            
-            f.seek(0)
-            json.dump(reviews, f, indent=2)
-            f.truncate()
-    
-    return await manage_pending_reviews(update, context)
-
 async def manage_networks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère le menu de configuration des réseaux"""
     query = update.callback_query
@@ -4158,12 +3892,6 @@ def main():
                     CallbackQueryHandler(admin_features.show_ban_user_menu, pattern="^ban_user_menu$"),
                     CallbackQueryHandler(admin_features.show_unban_user_menu, pattern="^unban_user_menu$"),
                     CallbackQueryHandler(admin_features.handle_unban_callback, pattern="^unban_[0-9]+$"),
-                    CallbackQueryHandler(show_reviews_menu, pattern="^show_reviews$"),
-                    CallbackQueryHandler(start_review_creation, pattern="^post_review$"),
-                    CallbackQueryHandler(view_reviews, pattern="^view_reviews$"),
-                    CallbackQueryHandler(manage_pending_reviews, pattern="^manage_pending_reviews$"),
-                    CallbackQueryHandler(handle_reviews_pagination, pattern="^(prev|next)_reviews_page$"),
-                    CallbackQueryHandler(handle_review_moderation, pattern="^(approve|reject)_review_[0-9]+$"),
                     CallbackQueryHandler(
                         lambda u, c: admin_features.show_user_list(u, c, user_type=u.callback_query.data.split('_')[2]), 
                         pattern=r"^user_list_(validated|pending|banned)_[0-9]+$"
@@ -4215,10 +3943,6 @@ def main():
                 WAITING_CONTACT_USERNAME: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_contact_username),
                     CallbackQueryHandler(handle_normal_buttons),
-                ],
-                WAITING_REVIEW_TEXT: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_review_text),
-                    CallbackQueryHandler(show_reviews_menu, pattern="^show_reviews$"),
                 ],
                 SELECTING_PRODUCT_TO_EDIT: [
                     CallbackQueryHandler(handle_normal_buttons),
