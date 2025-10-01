@@ -1,4 +1,4 @@
-﻿from handlers.admin_features import AdminFeatures
+from handlers.admin_features import AdminFeatures
 from modules.access_manager import AccessManager
 import json
 import logging
@@ -291,49 +291,58 @@ CATALOG = load_catalog()
 async def handle_access_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère la vérification du code d'accès"""
     user_id = update.effective_user.id
-    code = update.message.text.strip()
+    message_text = update.message.text.strip()
     chat_id = update.effective_chat.id
+    
+    # Rechercher un code d'accès valide dans le message
+    # Le code d'accès est composé de 8 caractères alphanumériques (lettres majuscules et chiffres)
+    import re
+    potential_codes = re.findall(r'[A-Z0-9]{8}', message_text)
     
     try:
         await update.message.delete()
     except Exception as e:
         pass
 
-    if admin_features.mark_code_as_used(code, user_id, update.effective_user.username):
-        try:
-            current_message_id = update.message.message_id
-            
-            for i in range(current_message_id - 15, current_message_id + 1):
-                try:
-                    await context.bot.delete_message(chat_id=chat_id, message_id=i)
-                except Exception as e:
-                    pass  
-                    
-            if 'initial_welcome_message_id' in context.user_data:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=chat_id,
-                        message_id=context.user_data['initial_welcome_message_id']
-                    )
-                except Exception as e:
-                    pass
+    # Tester chaque code potentiel trouvé dans le message
+    for code in potential_codes:
+        if admin_features.mark_code_as_used(code, user_id, update.effective_user.username):
+            try:
+                current_message_id = update.message.message_id
                 
-            context.user_data.clear() 
-            
-        except Exception as e:
-            pass  
+                # Nettoyage des messages précédents
+                for i in range(current_message_id - 15, current_message_id + 1):
+                    try:
+                        await context.bot.delete_message(chat_id=chat_id, message_id=i)
+                    except Exception as e:
+                        pass  
+                        
+                if 'initial_welcome_message_id' in context.user_data:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=chat_id,
+                            message_id=context.user_data['initial_welcome_message_id']
+                        )
+                    except Exception as e:
+                        pass
+                    
+                context.user_data.clear()
+                
+            except Exception as e:
+                pass
+                
+            return await start(update, context)
+
+    # Si aucun code valide n'a été trouvé dans le message
+    try:
+        await update.message.reply_text(
+            text="❌ Code invalide ou expiré",
+            reply_markup=None
+        )
+    except Exception as e:
+        pass
         
-        return await start(update, context)
-    else:
-        try:
-            await update.message.reply_text(
-                text="❌ Code invalide ou expiré",
-                reply_markup=None
-            )
-        except Exception as e:
-            pass
-            
-        return WAITING_FOR_ACCESS_CODE
+    return WAITING_FOR_ACCESS_CODE
 
 async def admin_generate_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Génère un nouveau code d'accès (commande admin)"""
